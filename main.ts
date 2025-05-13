@@ -17,21 +17,25 @@ async function handler(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const targetUrl = new URL(url.pathname + url.search, targetBaseUrl);
 
-    console.log(`[${request.method}] Proxying: ${url.pathname}${url.search} -> ${targetUrl.toString()}`);
-
     const isAjaxRequest = url.pathname === '/themes/ajax/ch.php' && request.method === 'POST';
     if (isAjaxRequest) {
         console.log("--- MENDETEKSI PERMINTAAN AJAX POST ke /themes/ajax/ch.php ---");
+        console.log(`[${request.method}] Proxying: ${url.pathname}${url.search} -> ${targetUrl.toString()}`); // Tetap log URL proxying untuk AJAX
     }
+
 
     const headers = new Headers(BROWSER_HEADERS);
 
     const clientCookieHeader = request.headers.get('Cookie');
     if (clientCookieHeader) {
         headers.set('Cookie', clientCookieHeader);
-        console.log(`Meneruskan header cookie klien: ${clientCookieHeader.substring(0, 50)}${clientCookieHeader.length > 50 ? '...' : ''}`);
+        // Logging cookie klien hanya untuk AJAX
+        if (isAjaxRequest) {
+           console.log(`Meneruskan header cookie klien: ${clientCookieHeader.substring(0, 50)}${clientCookieHeader.length > 50 ? '...' : ''}`);
+        }
     }
 
+    // Logging header permintaan keluar (termasuk cookie yang diteruskan) hanya untuk AJAX
     if (isAjaxRequest) {
         console.log("Header Permintaan Keluar ke Target:");
         for (const [name, value] of headers.entries()) {
@@ -46,12 +50,14 @@ async function handler(request: Request): Promise<Response> {
       redirect: 'manual',
     });
 
-    console.log(`[${request.method}] Received response from target: ${response.status}`);
+    // Logging status respons umum dihapus, hanya status spesifik AJAX di bawah yang tersisa
+    // console.log(`[${request.method}] Received response from target: ${response.status}`);
 
+     // Logging header dan body respons masuk dari target hanya untuk AJAX
     if (isAjaxRequest) {
+         console.log(`[${request.method}] Received response from target: ${response.status}`); // Log status di sini untuk AJAX
          console.log("Header Respons Masuk dari Target:");
-         // PERBAIKAN DITERAPKAN DI BARIS INI
-         for (const [name, value] of response.headers.entries()) {
+         for (const [name, value) of response.headers.entries()) { // Fix: value) -> value]
              console.log(`  ${name}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
          }
          console.log(`Status Respons Target untuk AJAX: ${response.status}`);
@@ -68,10 +74,11 @@ async function handler(request: Request): Promise<Response> {
          }
     }
 
+
     const contentType = response.headers.get('content-type') || '';
 
     if (contentType.includes('text/html')) {
-        console.log("Content-Type is HTML, processing with Cheerio...");
+        // console.log("Content-Type is HTML, processing with Cheerio..."); // Dihapus
         try {
             const html = await response.text();
             const $ = cheerio.load(html);
@@ -86,7 +93,7 @@ async function handler(request: Request): Promise<Response> {
                     }
                     return url;
                 } catch (e) {
-                    console.warn(`Gagal mengurai atau menulis ulang URL: ${url}`, e);
+                    console.warn(`Gagal mengurai atau menulis ulang URL: ${url}`, e); // Tetap pertahankan warning
                     return url;
                 }
             };
@@ -128,35 +135,35 @@ async function handler(request: Request): Promise<Response> {
 
                             if (rewrittenSrcset !== originalUrl) {
                                 $element.attr(attribute, rewrittenSrcset);
-                                console.log(`Menulis ulang srcset untuk ${selector} index ${index}: ${originalUrl} -> ${rewrittenSrcset.substring(0, 50)}${rewrittenSrcset.length > 50 ? '...' : ''}`);
+                                // console.log(`Menulis ulang srcset...`); // Dihapus
                             }
                         } else {
                             const rewrittenUrl = rewriteUrl(originalUrl);
                             if (rewrittenUrl !== null && rewrittenUrl !== originalUrl) {
                                 $element.attr(attribute, rewrittenUrl);
-                                console.log(`Menulis ulang ${attribute} untuk ${selector} index ${index}: ${originalUrl} -> ${rewrittenUrl.substring(0, 50)}${rewrittenUrl.length > 50 ? '...' : ''}`);
+                                // console.log(`Menulis ulang ${attribute}...`); // Dihapus
                             }
                         }
                     }
                 });
             });
-            console.log("Penulisan ulang URL selesai.");
+            // console.log("Penulisan ulang URL selesai."); // Dihapus
 
             let removedCount = 0;
             $('script:not([src])').each((index, element) => {
                 const scriptContent = $(element).text();
 
                 if (scriptContent.includes('mydomain')) {
-                    console.log(`Menghapus script tag inline index ${index} karena mengandung "mydomain" (konten awal: ${scriptContent.substring(0, 50)}${scriptContent.length > 50 ? '...' : ''})`);
+                    // console.log(`Menghapus script tag inline...`); // Dihapus
                     $(element).remove();
                     removedCount++;
                 }
             });
-            console.log(`Penghapusan script tag selesai. Dihapus ${removedCount}.`);
+            // console.log(`Penghapusan script tag selesai. Dihapus ${removedCount}.`); // Dihapus
 
 
             const modifiedHtml = $.html();
-            console.log("HTML diproses. Mengembalikan HTML yang dimodifikasi.");
+            // console.log("HTML diproses. Mengembalikan HTML yang dimodifikasi."); // Dihapus
 
 
             const modifiedHeaders = new Headers(response.headers);
@@ -171,24 +178,22 @@ async function handler(request: Request): Promise<Response> {
             });
 
         } catch (htmlProcessError) {
-            console.error("Error processing HTML with Cheerio:", htmlProcessError);
-            console.warn("Mengembalikan respons error karena kesalahan pemrosesan HTML.");
+            console.error("Error processing HTML with Cheerio:", htmlProcessError); // Tetap pertahankan error
              return new Response("Internal Server Error: HTML processing failed.", { status: 500 });
         }
 
     } else {
-        console.log(`Content-Type bukan HTML (${contentType}), mengembalikan respons asli dengan headers disalin.`);
+        // console.log(`Content-Type bukan HTML...`); // Dihapus
 
         const originalHeaders = new Headers(response.headers);
 
         if (isAjaxRequest) {
-             console.log("Menambahkan header CORS ke respons proxy untuk AJAX URL.");
+             console.log("Menambahkan header CORS ke respons proxy untuk AJAX URL."); // Tetap pertahankan
              originalHeaders.set('Access-Control-Allow-Origin', '*');
              originalHeaders.set('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
              originalHeaders.set('Access-Control-Allow-Headers', '*');
              originalHeaders.set('Access-Control-Allow-Credentials', 'true');
         }
-
 
         return new Response(response.body, {
             status: response.status,
@@ -198,18 +203,16 @@ async function handler(request: Request): Promise<Response> {
     }
 
   } catch (error) {
-    console.error("Error handling request:", error);
+    console.error("Error handling request:", error); // Tetap pertahankan error utama
     return new Response("Proxy error", { status: 500 });
   }
 }
 
-console.log(`Deno reverse proxy berjalan di http://localhost:${port}`);
-console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
+console.log(`Deno reverse proxy berjalan di http://localhost:${port}`); // Tetap pertahankan
+console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`); // Tetap pertahankan
 
 Deno.serve({ port }, handler);
 
 // Cara menjalankan:
-// Simpan kode ini dalam file (misal: proxy_debug_ajax_body_fixed.ts)
-// Jalankan dari terminal: deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_debug_ajax_body_fixed.ts
-// Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda jika Anda menemui error terkait baca.
-// Atau (kurang aman): deno run -A proxy_debug_ajax_body_fixed.ts
+// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_ajax_only_log.ts
+// Atau (kurang aman): deno run -A proxy_ajax_only_log.ts
