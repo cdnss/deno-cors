@@ -20,7 +20,7 @@ async function handler(request: Request): Promise<Response> {
     const isAjaxRequest = url.pathname === '/themes/ajax/ch.php' && request.method === 'POST';
     if (isAjaxRequest) {
         console.log("--- MENDETEKSI PERMINTAAN AJAX POST ke /themes/ajax/ch.php ---");
-        console.log(`[${request.method}] Proxying: ${url.pathname}${url.search} -> ${targetUrl.toString()}`); // Tetap log URL proxying untuk AJAX
+        console.log(`[${request.method}] Proxying: ${url.pathname}${url.search} -> ${targetUrl.toString()}`);
     }
 
 
@@ -29,7 +29,6 @@ async function handler(request: Request): Promise<Response> {
     const clientCookieHeader = request.headers.get('Cookie');
     if (clientCookieHeader) {
         headers.set('Cookie', clientCookieHeader);
-        // Logging cookie klien hanya untuk AJAX
         if (isAjaxRequest) {
            console.log(`Meneruskan header cookie klien: ${clientCookieHeader.substring(0, 50)}${clientCookieHeader.length > 50 ? '...' : ''}`);
         }
@@ -38,6 +37,7 @@ async function handler(request: Request): Promise<Response> {
     // Logging header permintaan keluar (termasuk cookie yang diteruskan) hanya untuk AJAX
     if (isAjaxRequest) {
         console.log("Header Permintaan Keluar ke Target:");
+        // PERBAIKAN DITERAPKAN DI BARIS INI
         for (const [name, value] of headers.entries()) {
             console.log(`  ${name}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
         }
@@ -50,14 +50,11 @@ async function handler(request: Request): Promise<Response> {
       redirect: 'manual',
     });
 
-    // Logging status respons umum dihapus, hanya status spesifik AJAX di bawah yang tersisa
-    // console.log(`[${request.method}] Received response from target: ${response.status}`);
-
-     // Logging header dan body respons masuk dari target hanya untuk AJAX
     if (isAjaxRequest) {
-         console.log(`[${request.method}] Received response from target: ${response.status}`); // Log status di sini untuk AJAX
+         console.log(`[${request.method}] Received response from target: ${response.status}`);
          console.log("Header Respons Masuk dari Target:");
-         for (const [name, value) of response.headers.entries()) { // Fix: value) -> value]
+         // PERBAIKAN SUDAH DITERAPKAN DI BARIS INI PADA GILIRAN SEBELUMNYA
+         for (const [name, value] of response.headers.entries()) {
              console.log(`  ${name}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
          }
          console.log(`Status Respons Target untuk AJAX: ${response.status}`);
@@ -74,11 +71,9 @@ async function handler(request: Request): Promise<Response> {
          }
     }
 
-
     const contentType = response.headers.get('content-type') || '';
 
     if (contentType.includes('text/html')) {
-        // console.log("Content-Type is HTML, processing with Cheerio..."); // Dihapus
         try {
             const html = await response.text();
             const $ = cheerio.load(html);
@@ -93,7 +88,7 @@ async function handler(request: Request): Promise<Response> {
                     }
                     return url;
                 } catch (e) {
-                    console.warn(`Gagal mengurai atau menulis ulang URL: ${url}`, e); // Tetap pertahankan warning
+                    console.warn(`Gagal mengurai atau menulis ulang URL: ${url}`, e);
                     return url;
                 }
             };
@@ -135,36 +130,28 @@ async function handler(request: Request): Promise<Response> {
 
                             if (rewrittenSrcset !== originalUrl) {
                                 $element.attr(attribute, rewrittenSrcset);
-                                // console.log(`Menulis ulang srcset...`); // Dihapus
                             }
                         } else {
                             const rewrittenUrl = rewriteUrl(originalUrl);
                             if (rewrittenUrl !== null && rewrittenUrl !== originalUrl) {
                                 $element.attr(attribute, rewrittenUrl);
-                                // console.log(`Menulis ulang ${attribute}...`); // Dihapus
                             }
                         }
                     }
                 });
             });
-            // console.log("Penulisan ulang URL selesai."); // Dihapus
 
             let removedCount = 0;
             $('script:not([src])').each((index, element) => {
                 const scriptContent = $(element).text();
 
                 if (scriptContent.includes('mydomain')) {
-                    // console.log(`Menghapus script tag inline...`); // Dihapus
                     $(element).remove();
                     removedCount++;
                 }
             });
-            // console.log(`Penghapusan script tag selesai. Dihapus ${removedCount}.`); // Dihapus
-
 
             const modifiedHtml = $.html();
-            // console.log("HTML diproses. Mengembalikan HTML yang dimodifikasi."); // Dihapus
-
 
             const modifiedHeaders = new Headers(response.headers);
             modifiedHeaders.delete('content-length');
@@ -178,22 +165,21 @@ async function handler(request: Request): Promise<Response> {
             });
 
         } catch (htmlProcessError) {
-            console.error("Error processing HTML with Cheerio:", htmlProcessError); // Tetap pertahankan error
+            console.error("Error processing HTML with Cheerio:", htmlProcessError);
              return new Response("Internal Server Error: HTML processing failed.", { status: 500 });
         }
 
     } else {
-        // console.log(`Content-Type bukan HTML...`); // Dihapus
-
         const originalHeaders = new Headers(response.headers);
 
         if (isAjaxRequest) {
-             console.log("Menambahkan header CORS ke respons proxy untuk AJAX URL."); // Tetap pertahankan
+             console.log("Menambahkan header CORS ke respons proxy untuk AJAX URL.");
              originalHeaders.set('Access-Control-Allow-Origin', '*');
              originalHeaders.set('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
              originalHeaders.set('Access-Control-Allow-Headers', '*');
              originalHeaders.set('Access-Control-Allow-Credentials', 'true');
         }
+
 
         return new Response(response.body, {
             status: response.status,
@@ -203,16 +189,16 @@ async function handler(request: Request): Promise<Response> {
     }
 
   } catch (error) {
-    console.error("Error handling request:", error); // Tetap pertahankan error utama
+    console.error("Error handling request:", error);
     return new Response("Proxy error", { status: 500 });
   }
 }
 
-console.log(`Deno reverse proxy berjalan di http://localhost:${port}`); // Tetap pertahankan
-console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`); // Tetap pertahankan
+console.log(`Deno reverse proxy berjalan di http://localhost:${port}`);
+console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 
 Deno.serve({ port }, handler);
 
 // Cara menjalankan:
-// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_ajax_only_log.ts
-// Atau (kurang aman): deno run -A proxy_ajax_only_log.ts
+// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_debug_ajax_body_fixed_again.ts
+// Atau (kurang aman): deno run -A proxy_debug_ajax_body_fixed_again.ts
