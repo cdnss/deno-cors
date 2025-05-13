@@ -1,9 +1,9 @@
 // ... imports and constants ...
-
+const port = 8000
 async function handler(request: Request): Promise<Response> {
   try {
     const url = new URL(request.url);
-    const port = 8000
+    
     let targetOrigin: string;
     let targetPath: string;
 
