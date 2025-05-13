@@ -45,7 +45,7 @@ const AJAX_HEADERS = {
 async function handler(request: Request): Promise<Response> {
   try {
     const url = new URL(request.url);
-      if(url.endsWith("webp")){
+      if(request.url.endsWith("webp")){
           targetBaseUrl = "https://desu.photos"
       }
     const targetUrl = new URL(url.pathname + url.search, targetBaseUrl);
