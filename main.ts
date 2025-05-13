@@ -19,6 +19,14 @@ async function handler(request: Request): Promise<Response> {
 
     console.log(`[${request.method}] Proxying: ${url.pathname}${url.search} -> ${targetUrl.toString()}`);
 
+    // --- Tambahkan logging khusus untuk URL AJAX ---
+    const isAjaxRequest = url.pathname === '/themes/ajax/ch.php' && request.method === 'POST';
+    if (isAjaxRequest) {
+        console.log("--- MENDETEKSI PERMINTAAN AJAX POST ke /themes/ajax/ch.php ---");
+    }
+    // --- Akhir logging khusus ---
+
+
     const headers = new Headers(BROWSER_HEADERS);
 
     const clientCookieHeader = request.headers.get('Cookie');
@@ -26,6 +34,20 @@ async function handler(request: Request): Promise<Response> {
         headers.set('Cookie', clientCookieHeader);
         console.log(`Meneruskan header cookie klien: ${clientCookieHeader.substring(0, 50)}${clientCookieHeader.length > 50 ? '...' : ''}`);
     }
+
+    // --- Tambahkan logging header permintaan keluar (termasuk cookie yang diteruskan) ---
+    if (isAjaxRequest) {
+        console.log("Header Permintaan Keluar ke Target:");
+        for (const [name, value] of headers.entries()) {
+            console.log(`  ${name}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
+        }
+         // Untuk request POST, mungkin perlu log body juga jika ada
+         // request.body adalah ReadableStream, hanya bisa dibaca sekali.
+         // Reading it here means the fetch request won't have a body unless we clone/recreate.
+         // Logging body POST lebih kompleks karena stream. Kita lewati ini dulu.
+    }
+     // --- Akhir logging header permintaan keluar ---
+
 
     const response = await fetch(targetUrl.toString(), {
       method: request.method,
@@ -35,6 +57,23 @@ async function handler(request: Request): Promise<Response> {
     });
 
     console.log(`[${request.method}] Received response from target: ${response.status}`);
+
+     // --- Tambahkan logging header respons masuk dari target ---
+    if (isAjaxRequest) {
+         console.log("Header Respons Masuk dari Target:");
+         for (const [name, value] of response.headers.entries()) {
+             console.log(`  ${name}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
+         }
+         // Log status respons target untuk AJAX request
+         console.log(`Status Respons Target untuk AJAX: ${response.status}`);
+
+         // Jika status respons non-2xx, mungkin perlu membaca body respons target
+         // untuk melihat error message atau challenge page (hati-hati, body hanya bisa dibaca sekali)
+         // const responseBodyText = await response.clone().text(); // Clone untuk menghindari konsumsi body utama
+         // console.log("Body Respons Target untuk AJAX:", responseBodyText.substring(0, 500));
+    }
+     // --- Akhir logging header respons masuk ---
+
 
     const contentType = response.headers.get('content-type') || '';
 
@@ -123,11 +162,7 @@ async function handler(request: Request): Promise<Response> {
             console.log(`Penghapusan script tag selesai. Dihapus ${removedCount}.`);
 
 
-            // Dapatkan kembali HTML yang sudah dimodifikasi dari Cheerio
-            // --- BARIS YANG DIMODIFIKASI ---
-            const modifiedHtml = $.html().replace('/themes/ajax/ch.php', `${targetBaseUrl}/themes/ajax/ch.php`);
-            // --- AKHIR BARIS YANG DIMODIFIKASI ---
-
+            const modifiedHtml = $.html(); // KEMBALIKAN KE $.html() TANPA .replace()
             console.log("HTML diproses. Mengembalikan HTML yang dimodifikasi.");
 
 
@@ -172,6 +207,5 @@ console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 Deno.serve({ port }, handler);
 
 // Cara menjalankan (tetap sama):
-// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_manual_replace.ts
-// Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda jika Anda menemui error terkait baca.
-// Atau (kurang aman): deno run -A proxy_manual_replace.ts
+// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_debug_ajax.ts
+// Atau (kurang aman): deno run -A proxy_debug_ajax.ts
