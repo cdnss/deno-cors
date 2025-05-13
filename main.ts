@@ -4,13 +4,12 @@ const targetBaseUrl = "https://doujindesu.tv";
 
 const port = 8000;
 
-// Header yang akan dikirimkan ke server target untuk meniru browser
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
   'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
-  'Referer': targetBaseUrl, // Referer sudah disetel ke URL target
-  'Origin': targetBaseUrl // Tambahkan header Origin dan set ke URL target
+  'Referer': targetBaseUrl,
+  'Origin': targetBaseUrl
 };
 
 async function handler(request: Request): Promise<Response> {
@@ -20,26 +19,17 @@ async function handler(request: Request): Promise<Response> {
 
     console.log(`[${request.method}] Proxying: ${url.pathname}${url.search} -> ${targetUrl.toString()}`);
 
-    // Buat objek Headers baru untuk permintaan keluar ke target
-    // Objek Headers ini akan menggunakan header dari BROWSER_HEADERS
     const headers = new Headers(BROWSER_HEADERS);
 
-    // Anda bisa menambahkan logika untuk menyalin header tertentu dari permintaan klien
-    // jika Anda membutuhkannya, tapi hati-hati dengan header sensitif.
-
-
-    // Lakukan fetch ke URL target menggunakan metode dan body dari permintaan masuk
-    // Header 'headers' yang kita siapkan akan digunakan di sini
     const response = await fetch(targetUrl.toString(), {
       method: request.method,
-      headers: headers, // MENGGUNAKAN HEADER YANG SUDAH TERMASUK REFERER DAN ORIGIN
+      headers: headers,
       body: request.body,
       redirect: 'manual',
     });
 
     console.log(`[${request.method}] Received response from target: ${response.status}`);
 
-    // ... sisa logika penanganan respons HTML vs non-HTML tetap sama ...
     const contentType = response.headers.get('content-type') || '';
 
     if (contentType.includes('text/html')) {
@@ -126,14 +116,27 @@ async function handler(request: Request): Promise<Response> {
             });
             console.log(`Penghapusan script tag selesai. Dihapus ${removedCount}.`);
 
-
             const modifiedHtml = $.html().replace('/themes/ajax/ch.php', `https://doujindesu.tv/themes/ajax/ch.php`);
+            
             console.log("HTML diproses. Mengembalikan HTML yang dimodifikasi.");
 
             const modifiedHeaders = new Headers(response.headers);
             modifiedHeaders.delete('content-length');
             modifiedHeaders.delete('content-encoding');
             modifiedHeaders.set('content-type', 'text/html; charset=utf-8');
+            // --- TAMBAHAN: Tambahkan header CORS ke respons HTML ---
+            modifiedHeaders.set('Access-Control-Allow-Origin', '*'); // Izinkan permintaan dari origin manapun
+            // Atau, untuk lebih spesifik, Anda bisa menggunakan origin permintaan masuk:
+            // const origin = request.headers.get('Origin');
+            // if (origin) {
+            //     modifiedHeaders.set('Access-Control-Allow-Origin', origin);
+            //     // Anda mungkin juga perlu headers lain seperti Access-Control-Allow-Credentials,
+            //     // Access-Control-Allow-Headers, Access-Control-Allow-Methods
+            // } else {
+            //     modifiedHeaders.set('Access-Control-Allow-Origin', '*');
+            // }
+            // --- AKHIR TAMBAHAN ---
+
 
             return new Response(modifiedHtml, {
                 status: response.status,
@@ -143,7 +146,7 @@ async function handler(request: Request): Promise<Response> {
 
         } catch (htmlProcessError) {
             console.error("Error processing HTML with Cheerio:", htmlProcessError);
-            console.warn("Mengembalikan respons asli karena kesalahan pemrosesan HTML.");
+            console.warn("Mengembalikan respons Internal Server Error karena kesalahan pemrosesan HTML.");
              return new Response("Internal Server Error: HTML processing failed.", { status: 500 });
         }
 
@@ -151,6 +154,11 @@ async function handler(request: Request): Promise<Response> {
         console.log(`Content-Type bukan HTML (${contentType}), mengembalikan respons asli dengan headers disalin.`);
 
         const originalHeaders = new Headers(response.headers);
+        // --- TAMBAHAN: Tambahkan header CORS ke respons resource non-HTML ---
+        originalHeaders.set('Access-Control-Allow-Origin', '*'); // Izinkan permintaan dari origin manapun
+        // Sama seperti di atas, Anda bisa lebih spesifik jika perlu.
+        // --- AKHIR TAMBAHAN ---
+
 
         return new Response(response.body, {
             status: response.status,
@@ -169,3 +177,8 @@ console.log(`Deno reverse proxy berjalan di http://localhost:${port}`);
 console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 
 Deno.serve({ port }, handler);
+
+// Cara menjalankan (tetap sama):
+// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_fix_cors.ts
+// Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda.
+// Atau (kurang aman): deno run -A proxy_fix_cors.ts
