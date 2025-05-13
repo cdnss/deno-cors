@@ -1,6 +1,6 @@
 import * as cheerio from "https://esm.sh/cheerio@1.0.0-rc.12";
 
-const targetBaseUrl = "https://doujindesu.tv";
+var targetBaseUrl = "https://doujindesu.tv";
 
 const port = 8000;
 
@@ -45,6 +45,9 @@ const AJAX_HEADERS = {
 async function handler(request: Request): Promise<Response> {
   try {
     const url = new URL(request.url);
+      if(url.endsWith("webp")){
+          targetBaseUrl = "https://desu.photos"
+      }
     const targetUrl = new URL(url.pathname + url.search, targetBaseUrl);
 
     const isAjaxRequest = url.pathname === '/themes/ajax/ch.php' && request.method === 'POST';
@@ -197,7 +200,7 @@ async function handler(request: Request): Promise<Response> {
                 }
             });
 
-            const modifiedHtml = $.html();
+            const modifiedHtml = $.html().replace('html(data)', 'html(data.replace("https://desu.photos",""))');
 
             const modifiedHeaders = new Headers(response.headers);
             modifiedHeaders.delete('content-length');
