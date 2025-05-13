@@ -37,74 +37,61 @@ async function handler(request: Request): Promise<Response> {
             const html = await response.text();
             const $ = cheerio.load(html);
 
-            // Fungsi bantu untuk menulis ulang URL
             const rewriteUrl = (url: string | null | undefined): string | null => {
-                if (!url) return null; // Tidak ada URL untuk diproses
+                if (!url) return null;
                 try {
-                    // Buat objek URL absolut berdasarkan URL target base dan URL yang ditemukan
                     const absoluteUrl = new URL(url, targetBaseUrl);
 
-                    // Periksa apakah hostname URL ini sama dengan hostname targetBaseUrl
                     if (absoluteUrl.hostname === new URL(targetBaseUrl).hostname) {
-                        // Jika ya, kembalikan hanya path, query, dan hash. Ini akan menjadi URL relatif
-                        // terhadap root proxy, yang akan diminta oleh browser dari proxy itu sendiri.
                         return absoluteUrl.pathname + absoluteUrl.search + absoluteUrl.hash;
                     }
-                    // Jika hostname berbeda (URL eksternal), kembalikan URL aslinya tanpa diubah
                     return url;
                 } catch (e) {
-                    // Jika parsing URL gagal, log peringatan dan kembalikan URL asli
                     console.warn(`Gagal mengurai atau menulis ulang URL: ${url}`, e);
                     return url;
                 }
             };
 
-            // Daftar selector elemen dan atribut yang mungkin mengandung URL
             const elementsAndAttributes = [
-                { selector: 'a[href]', attribute: 'href' }, // Link
-                { selector: 'link[href]', attribute: 'href' }, // CSS, ikon, prefetch, dll.
-                { selector: 'script[src]', attribute: 'src' }, // Skrip eksternal
-                { selector: 'img[src]', attribute: 'src' }, // Gambar
-                { selector: 'img[srcset]', attribute: 'srcset' }, // Gambar responsif (lebih kompleks)
-                { selector: 'source[src]', attribute: 'src' }, // Untuk gambar, audio, video
-                { selector: 'source[srcset]', attribute: 'srcset' }, // Gambar responsif source
-                { selector: 'form[action]', attribute: 'action' }, // Form submission URL
-                { selector: 'video[src]', attribute: 'src' }, // Video
-                { selector: 'video[poster]', attribute: 'poster' }, // Poster video
-                { selector: 'audio[src]', attribute: 'src' }, // Audio
-                { selector: 'use[href]', attribute: 'href' }, // SVG use
-                { selector: 'iframe[src]', attribute: 'src' }, // Iframe
-                // Pertimbangkan elemen lain jika perlu, misal: object[data], embed[src]
+                { selector: 'a[href]', attribute: 'href' },
+                { selector: 'link[href]', attribute: 'href' },
+                { selector: 'script[src]', attribute: 'src' },
+                { selector: 'img[src]', attribute: 'src' },
+                { selector: 'img[srcset]', attribute: 'srcset' },
+                { selector: 'source[src]', attribute: 'src' },
+                { selector: 'source[srcset]', attribute: 'srcset' },
+                { selector: 'form[action]', attribute: 'action' },
+                { selector: 'video[src]', attribute: 'src' },
+                { selector: 'video[poster]', attribute: 'poster' },
+                { selector: 'audio[src]', attribute: 'src' },
+                { selector: 'use[href]', attribute: 'href' },
+                { selector: 'iframe[src]', attribute: 'src' },
             ];
 
-            // Iterasi melalui daftar dan terapkan rewriteUrl
             elementsAndAttributes.forEach(({ selector, attribute }) => {
                 $(selector).each((index, element) => {
                     const $element = $(element);
                     const originalUrl = $element.attr(attribute);
 
                     if (originalUrl) {
-                         // Penanganan khusus untuk srcset karena bisa berisi banyak URL
                         if (attribute === 'srcset') {
-                            const rewrittenSrcset = originalUrl.split(',').map(srcsetItem => {
+                             const rewrittenSrcset = originalUrl.split(',').map(srcsetItem => {
                                 const parts = srcsetItem.trim().split(/\s+/);
                                 if (parts.length > 0) {
-                                    const urlPart = parts[0]; // Bagian URL di srcset
+                                    const urlPart = parts[0];
                                     const rewrittenUrlPart = rewriteUrl(urlPart);
-                                    if (rewrittenUrlPart !== null && rewrittenUrlPart !== urlPart) {
-                                         // Gabungkan kembali URL yang ditulis ulang dengan descriptor (misal: 1x, 400w)
+                                     if (rewrittenUrlPart !== null && rewrittenUrlPart !== urlPart) {
                                          return [rewrittenUrlPart, ...parts.slice(1)].join(' ');
                                     }
                                 }
-                                return srcsetItem; // Kembalikan bagian asli jika tidak ada perubahan atau error
-                            }).join(', '); // Gabungkan kembali semua bagian srcset
+                                return srcsetItem;
+                            }).join(', ');
 
                             if (rewrittenSrcset !== originalUrl) {
                                 $element.attr(attribute, rewrittenSrcset);
                                 console.log(`Menulis ulang srcset untuk ${selector} index ${index}: ${originalUrl} -> ${rewrittenSrcset.substring(0, 50)}...`);
                             }
                         } else {
-                            // Penanganan untuk atribut URL tunggal
                             const rewrittenUrl = rewriteUrl(originalUrl);
                             if (rewrittenUrl !== null && rewrittenUrl !== originalUrl) {
                                 $element.attr(attribute, rewrittenUrl);
@@ -116,11 +103,7 @@ async function handler(request: Request): Promise<Response> {
             });
             console.log("Penulisan ulang URL selesai.");
 
-
-            // --- Logika penghapusan script tag (sebelumnya) ---
             let removedCount = 0;
-            // Kita hanya perlu memeriksa script tag inline (tanpa src)
-            // karena script tag dengan src sudah ditangani di rewriteUrl
             $('script:not([src])').each((index, element) => {
                 const scriptContent = $(element).text();
 
@@ -131,7 +114,6 @@ async function handler(request: Request): Promise<Response> {
                 }
             });
             console.log(`Penghapusan script tag selesai. Dihapus ${removedCount}.`);
-            // --- Akhir logika penghapusan script tag ---
 
 
             const modifiedHtml = $.html();
@@ -151,12 +133,34 @@ async function handler(request: Request): Promise<Response> {
         } catch (htmlProcessError) {
             console.error("Error processing HTML with Cheerio:", htmlProcessError);
             console.warn("Mengembalikan respons asli karena kesalahan pemrosesan HTML.");
-            return response;
+            // Mengembalikan respons asli tanpa dimodifikasi jika Cheerio error
+            // Mungkin perlu membaca body lagi jika response.body sudah dikonsumsi
+            // Jika respons asli bisa dikembalikan (body belum dikonsumsi):
+            // return response;
+            // Jika body respons asli SUDAH dikonsumsi oleh response.text():
+            // Kita tidak bisa lagi mengembalikan respons asli dengan body-nya.
+            // Pilihan: return error 500, atau coba fetch ulang (tidak efisien).
+            // Untuk kesederhanaan, kita return error 500 di sini jika HTML processing gagal total.
+             return new Response("Internal Server Error: HTML processing failed.", { status: 500 });
         }
 
     } else {
-        console.log(`Content-Type bukan HTML (${contentType}), mengembalikan respons asli.`);
-        return response;
+        // --- MODIFIKASI DI SINI ---
+        // Untuk resource non-HTML, kita akan membuat Respons baru secara eksplisit
+        // dengan menyalin semua header dari respons asli.
+        console.log(`Content-Type bukan HTML (${contentType}), mengembalikan respons asli dengan headers disalin.`);
+
+        // Salin semua header dari respons asli yang diterima dari target
+        const originalHeaders = new Headers(response.headers);
+
+        // Buat objek Response baru. Gunakan body stream dari respons asli
+        // dan set status, statusText, dan headers dari respons asli.
+        return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: originalHeaders, // Gunakan header asli yang disalin
+        });
+        // --- AKHIR MODIFIKASI ---
     }
 
   } catch (error) {
@@ -171,7 +175,7 @@ console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 Deno.serve({ port }, handler);
 
 // Cara menjalankan (tetap sama):
-// Simpan kode ini dalam file (misal: proxy_rewrite.ts)
-// Jalankan dari terminal: deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_rewrite.ts
+// Simpan kode ini dalam file (misal: proxy_fix_mime.ts)
+// Jalankan dari terminal: deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_fix_mime.ts
 // Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda jika Anda menemui error terkait baca.
-// Atau (kurang aman): deno run -A proxy_rewrite.ts
+// Atau (kurang aman): deno run -A proxy_fix_mime.ts
