@@ -1,84 +1,72 @@
-import { serve } from "https://deno.land/std@0.181.0/http/server.ts";
-import { CSS, render } from "https://deno.land/x/gfm@0.1.22/mod.ts";
+import { serve } from "https://deno.land/std@0.215.0/http/server.ts";
 
-function addCorsIfNeeded(response: Response) {
-  const headers = new Headers(response.headers);
+// URL dasar situs target
+const targetBaseUrl = "https://doujindesu.tv";
 
-  if (!headers.has("access-control-allow-origin")) {
-    headers.set("access-control-allow-origin", "*");
-  }
+// Port di mana proxy Deno akan berjalan
+const port = 8000; // Anda bisa mengganti port ini jika perlu
 
-  return headers;
+// Header yang akan dikirimkan ke server target untuk meniru browser
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+  'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
+  // Referer penting agar server target tahu dari mana permintaan berasal (dalam konteks Browse)
+  'Referer': targetBaseUrl
+  // Anda bisa menambahkan header lain jika diperlukan, tapi hati-hati
+  // dengan header seperti Host, Origin, Connection, dll., biarkan fetch menanganinya.
+};
+
+// Handler untuk setiap permintaan masuk
+async function handler(request: Request): Promise<Response> {
+  try {
+    // Parse URL permintaan masuk
+    const url = new URL(request.url);
+
+    // Buat URL target dengan menggabungkan path dan query dari permintaan masuk
+    // dengan base URL target
+    const targetUrl = new URL(url.pathname + url.search, targetBaseUrl);
+
+    console.log(`[${request.method}] Proxying: ${url.pathname}${url.search} -> ${targetUrl.toString()}`);
+
+    // Buat objek Headers baru untuk permintaan keluar ke target
+    const headers = new Headers(BROWSER_HEADERS);
+
+    // Opsional: Salin beberapa header relevan dari permintaan klien asli
+    // Hati-hati dengan header sensitif seperti Cookie, Authorization, atau Host.
+    // Contoh: if (request.headers.get('Cookie')) headers.set('Cookie', request.headers.get('Cookie') as string);
+    // Contoh: if (request.headers.get('Accept-Encoding')) headers.set('Accept-Encoding', request.headers.get('Accept-Encoding') as string);
+
+
+    // Lakukan fetch ke URL target menggunakan metode dan body dari permintaan masuk
+    const response = await fetch(targetUrl.toString(), {
+      method: request.method,
+      headers: headers, // Gunakan header yang sudah kita siapkan
+      body: request.body, // Teruskan body permintaan (untuk POST, PUT, dll.)
+      redirect: 'manual', // Tangani redirect secara manual jika perlu (opsional)
+    });
+
+    console.log(`[${request.method}] Received response from target: ${response.status}`);
+
+    // Kembalikan respons yang diterima dari server target langsung ke klien
+    return response;
+
+  } catch (error) {
+    console.error("Error handling request:", error);
+    // Kembalikan respons error jika terjadi masalah saat memproses permintaan
+    return new Response("Proxy error", { status: 500 });
+  }
 }
 
-function isUrl(url: string) {
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    return false;
-  }
+console.log(`Deno reverse proxy running on http://localhost:${port}`);
+console.log(`Proxying requests to: ${targetBaseUrl}`);
 
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-}
+// Mulai server Deno
+serve({ port }, handler);
 
-async function handleRequest(request: Request) {
-  const { pathname, search } = new URL(request.url);
-  const url = pathname.substring(1) + search;
-
-  if (isUrl(url)) {
-    console.log("proxy to %s", url);
-    const corsHeaders = addCorsIfNeeded(new Response());
-    if (request.method.toUpperCase() === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
-    }
-
-    const response = await fetch(url, request);
-    const headers = addCorsIfNeeded(response);
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    });
-  }
-
-  const readme = await Deno.readTextFile("./README.md");
-  const body = render(readme);
-  const html = `<!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>CORS Proxy</title>
-        <style>
-          body {
-            margin: 0;
-            background-color: var(--color-canvas-default);
-            color: var(--color-fg-default);
-          }
-          main {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 2rem 1rem;
-          }
-          ${CSS}
-        </style>
-      </head>
-      <body data-color-mode="auto" data-light-theme="light" data-dark-theme="dark">
-        <main class="markdown-body">
-          ${body}
-        </main>
-      </body>
-    </html>`;
-  return new Response(html, {
-    headers: {
-      "content-type": "text/html;charset=utf-8",
-    },
-  });
-}
-
-const port = Deno.env.get("PORT") ?? "8000";
-
-serve(handleRequest, { port: Number(port) });
+// Cara menjalankan:
+// Pastikan Anda sudah menginstal Deno: https://deno.land/#installation
+// Simpan kode di atas dalam file (misal: proxy.ts)
+// Jalankan dari terminal: deno run --allow-net proxy.ts
+// Kemudian akses proxy dari browser Anda: http://localhost:8000/ (akan proxy ke https://doujindesu.tv/)
+// atau http://localhost:8000/manga/contoh-manga/ (akan proxy ke https://doujindesu.tv/manga/contoh-manga/)
