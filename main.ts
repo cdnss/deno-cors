@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.215.0/http/server.ts";
+// import { serve } from "https://deno.land/std@0.215.0/http/server.ts"; // Tidak perlu lagi mengimpor serve dari std
 
 // URL dasar situs target
 const targetBaseUrl = "https://doujindesu.tv";
@@ -13,8 +13,6 @@ const BROWSER_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
   // Referer penting agar server target tahu dari mana permintaan berasal (dalam konteks Browse)
   'Referer': targetBaseUrl
-  // Anda bisa menambahkan header lain jika diperlukan, tapi hati-hati
-  // dengan header seperti Host, Origin, Connection, dll., biarkan fetch menanganinya.
 };
 
 // Handler untuk setiap permintaan masuk
@@ -32,10 +30,13 @@ async function handler(request: Request): Promise<Response> {
     // Buat objek Headers baru untuk permintaan keluar ke target
     const headers = new Headers(BROWSER_HEADERS);
 
-    // Opsional: Salin beberapa header relevan dari permintaan klien asli
-    // Hati-hati dengan header sensitif seperti Cookie, Authorization, atau Host.
-    // Contoh: if (request.headers.get('Cookie')) headers.set('Cookie', request.headers.get('Cookie') as string);
-    // Contoh: if (request.headers.get('Accept-Encoding')) headers.set('Accept-Encoding', request.headers.get('Accept-Encoding') as string);
+    // Anda bisa menambahkan logika untuk menyalin header tertentu dari permintaan klien
+    // jika Anda membutuhkannya, tapi hati-hati dengan header seperti 'Host', 'Origin', 'Cookie'.
+    // Contoh menyalin Cookie:
+    // const clientCookie = request.headers.get('Cookie');
+    // if (clientCookie) {
+    //     headers.set('Cookie', clientCookie);
+    // }
 
 
     // Lakukan fetch ke URL target menggunakan metode dan body dari permintaan masuk
@@ -43,7 +44,7 @@ async function handler(request: Request): Promise<Response> {
       method: request.method,
       headers: headers, // Gunakan header yang sudah kita siapkan
       body: request.body, // Teruskan body permintaan (untuk POST, PUT, dll.)
-      redirect: 'manual', // Tangani redirect secara manual jika perlu (opsional)
+      redirect: 'manual', // Tangani redirect secara manual jika perlu (opsional, defaultnya follow)
     });
 
     console.log(`[${request.method}] Received response from target: ${response.status}`);
@@ -61,12 +62,10 @@ async function handler(request: Request): Promise<Response> {
 console.log(`Deno reverse proxy running on http://localhost:${port}`);
 console.log(`Proxying requests to: ${targetBaseUrl}`);
 
-// Mulai server Deno
-serve({ port }, handler);
+// Menggunakan Deno.serve bawaan Deno
+Deno.serve({ port }, handler);
 
-// Cara menjalankan:
-// Pastikan Anda sudah menginstal Deno: https://deno.land/#installation
+// Cara menjalankan (tetap sama):
+// Pastikan Anda sudah menginstal Deno.
 // Simpan kode di atas dalam file (misal: proxy.ts)
 // Jalankan dari terminal: deno run --allow-net proxy.ts
-// Kemudian akses proxy dari browser Anda: http://localhost:8000/ (akan proxy ke https://doujindesu.tv/)
-// atau http://localhost:8000/manga/contoh-manga/ (akan proxy ke https://doujindesu.tv/manga/contoh-manga/)
