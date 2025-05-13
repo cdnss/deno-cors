@@ -3,7 +3,7 @@
 async function handler(request: Request): Promise<Response> {
   try {
     const url = new URL(request.url);
-
+    const port = 8000
     let targetOrigin: string;
     let targetPath: string;
 
@@ -239,7 +239,7 @@ async function handler(request: Request): Promise<Response> {
 console.log(`Deno reverse proxy berjalan di http://localhost:${port}`);
 console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 
-Deno.serve({ 8000 }, handler);
+Deno.serve({ port }, handler);
 
 // Cara menjalankan:
 // deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_replace_webp_override.ts
