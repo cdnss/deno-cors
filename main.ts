@@ -32,44 +32,31 @@ async function handler(request: Request): Promise<Response> {
         console.log(`Meneruskan header cookie klien: ${clientCookieHeader.substring(0, 50)}${clientCookieHeader.length > 50 ? '...' : ''}`);
     }
 
-    // --- Tambahkan logging header permintaan keluar (termasuk cookie yang diteruskan) ---
     if (isAjaxRequest) {
         console.log("Header Permintaan Keluar ke Target:");
         for (const [name, value] of headers.entries()) {
             console.log(`  ${name}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
         }
-         // Logging body permintaan masuk dari klien (request.body) sulit karena stream
-         // Tanpa mengonsumsinya, kita tidak bisa log body-nya di sini.
-         // Jika Anda perlu debug body POST, Anda harus membaca request.body di sini,
-         // menyimpannya, melognya, lalu membuat ReadableStream baru untuk fetch body.
-         // Ini menambah kompleksitas. Fokus pada header dulu.
     }
-     // --- Akhir logging header permintaan keluar ---
 
-
-    // PERHATIAN: request.body adalah stream dan hanya bisa dibaca sekali.
-    // Karena kita meneruskannya langsung ke fetch(), kita tidak bisa membacanya di sini untuk logging.
-    // Jika logging body POST mutlak diperlukan, arsitektur perlu diubah.
     const response = await fetch(targetUrl.toString(), {
       method: request.method,
-      headers: headers, // MENGGUNAKAN HEADER YANG SUDAH MENERUSKAN COOKIE KLIEN
-      body: request.body, // Meneruskan body POST dari klien
+      headers: headers,
+      body: request.body,
       redirect: 'manual',
     });
 
     console.log(`[${request.method}] Received response from target: ${response.status}`);
 
-     // --- Tambahkan logging header dan body respons masuk dari target ---
     if (isAjaxRequest) {
          console.log("Header Respons Masuk dari Target:");
-         for (const [name, value) of response.headers.entries()) {
+         // PERBAIKAN DITERAPKAN DI BARIS INI
+         for (const [name, value] of response.headers.entries()) {
              console.log(`  ${name}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
          }
          console.log(`Status Respons Target untuk AJAX: ${response.status}`);
 
-         // --- AKTIFKAN LOGGING BODY RESPONS UNTUK DEBUGGING AJAX ---
          try {
-             // Gunakan response.clone() agar body respons utama tetap bisa dibaca oleh browser
              const responseBodyText = await response.clone().text();
              console.log("Body Respons Target untuk AJAX (5000 karakter pertama):");
              console.log(responseBodyText.substring(0, 5000));
@@ -79,15 +66,12 @@ async function handler(request: Request): Promise<Response> {
          } catch (bodyLogErr) {
              console.error("Gagal mencatat body respons:", bodyLogErr);
          }
-         // --- AKHIR LOGGING BODY RESPONS ---
     }
-     // --- Akhir logging khusus AJAX ---
-
 
     const contentType = response.headers.get('content-type') || '';
 
     if (contentType.includes('text/html')) {
-        console.log("Content-Type adalah HTML, memproses dengan Cheerio...");
+        console.log("Content-Type is HTML, processing with Cheerio...");
         try {
             const html = await response.text();
             const $ = cheerio.load(html);
@@ -197,7 +181,6 @@ async function handler(request: Request): Promise<Response> {
 
         const originalHeaders = new Headers(response.headers);
 
-        // --- MODIFIKASI: Tambahkan header CORS ke respons proxy UNTUK URL AJAX ---
         if (isAjaxRequest) {
              console.log("Menambahkan header CORS ke respons proxy untuk AJAX URL.");
              originalHeaders.set('Access-Control-Allow-Origin', '*');
@@ -205,7 +188,6 @@ async function handler(request: Request): Promise<Response> {
              originalHeaders.set('Access-Control-Allow-Headers', '*');
              originalHeaders.set('Access-Control-Allow-Credentials', 'true');
         }
-        // --- AKHIR MODIFIKASI ---
 
 
         return new Response(response.body, {
@@ -226,6 +208,8 @@ console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 
 Deno.serve({ port }, handler);
 
-// Cara menjalankan (tetap sama):
-// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_debug_ajax_body.ts
-// Atau (kurang aman): deno run -A proxy_debug_ajax_body.ts
+// Cara menjalankan:
+// Simpan kode ini dalam file (misal: proxy_debug_ajax_body_fixed.ts)
+// Jalankan dari terminal: deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_debug_ajax_body_fixed.ts
+// Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda jika Anda menemui error terkait baca.
+// Atau (kurang aman): deno run -A proxy_debug_ajax_body_fixed.ts
