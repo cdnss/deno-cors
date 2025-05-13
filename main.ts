@@ -4,11 +4,13 @@ const targetBaseUrl = "https://doujindesu.tv";
 
 const port = 8000;
 
+// Header yang akan dikirimkan ke server target untuk meniru browser
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
   'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
-  'Referer': targetBaseUrl
+  'Referer': targetBaseUrl, // Referer sudah disetel ke URL target
+  'Origin': targetBaseUrl // Tambahkan header Origin dan set ke URL target
 };
 
 async function handler(request: Request): Promise<Response> {
@@ -18,17 +20,26 @@ async function handler(request: Request): Promise<Response> {
 
     console.log(`[${request.method}] Proxying: ${url.pathname}${url.search} -> ${targetUrl.toString()}`);
 
+    // Buat objek Headers baru untuk permintaan keluar ke target
+    // Objek Headers ini akan menggunakan header dari BROWSER_HEADERS
     const headers = new Headers(BROWSER_HEADERS);
 
+    // Anda bisa menambahkan logika untuk menyalin header tertentu dari permintaan klien
+    // jika Anda membutuhkannya, tapi hati-hati dengan header sensitif.
+
+
+    // Lakukan fetch ke URL target menggunakan metode dan body dari permintaan masuk
+    // Header 'headers' yang kita siapkan akan digunakan di sini
     const response = await fetch(targetUrl.toString(), {
       method: request.method,
-      headers: headers,
+      headers: headers, // MENGGUNAKAN HEADER YANG SUDAH TERMASUK REFERER DAN ORIGIN
       body: request.body,
       redirect: 'manual',
     });
 
     console.log(`[${request.method}] Received response from target: ${response.status}`);
 
+    // ... sisa logika penanganan respons HTML vs non-HTML tetap sama ...
     const contentType = response.headers.get('content-type') || '';
 
     if (contentType.includes('text/html')) {
@@ -74,7 +85,7 @@ async function handler(request: Request): Promise<Response> {
                     const originalUrl = $element.attr(attribute);
 
                     if (originalUrl) {
-                        if (attribute === 'srcset') {
+                         if (attribute === 'srcset') {
                              const rewrittenSrcset = originalUrl.split(',').map(srcsetItem => {
                                 const parts = srcsetItem.trim().split(/\s+/);
                                 if (parts.length > 0) {
@@ -133,34 +144,19 @@ async function handler(request: Request): Promise<Response> {
         } catch (htmlProcessError) {
             console.error("Error processing HTML with Cheerio:", htmlProcessError);
             console.warn("Mengembalikan respons asli karena kesalahan pemrosesan HTML.");
-            // Mengembalikan respons asli tanpa dimodifikasi jika Cheerio error
-            // Mungkin perlu membaca body lagi jika response.body sudah dikonsumsi
-            // Jika respons asli bisa dikembalikan (body belum dikonsumsi):
-            // return response;
-            // Jika body respons asli SUDAH dikonsumsi oleh response.text():
-            // Kita tidak bisa lagi mengembalikan respons asli dengan body-nya.
-            // Pilihan: return error 500, atau coba fetch ulang (tidak efisien).
-            // Untuk kesederhanaan, kita return error 500 di sini jika HTML processing gagal total.
              return new Response("Internal Server Error: HTML processing failed.", { status: 500 });
         }
 
     } else {
-        // --- MODIFIKASI DI SINI ---
-        // Untuk resource non-HTML, kita akan membuat Respons baru secara eksplisit
-        // dengan menyalin semua header dari respons asli.
         console.log(`Content-Type bukan HTML (${contentType}), mengembalikan respons asli dengan headers disalin.`);
 
-        // Salin semua header dari respons asli yang diterima dari target
         const originalHeaders = new Headers(response.headers);
 
-        // Buat objek Response baru. Gunakan body stream dari respons asli
-        // dan set status, statusText, dan headers dari respons asli.
         return new Response(response.body, {
             status: response.status,
             statusText: response.statusText,
-            headers: originalHeaders, // Gunakan header asli yang disalin
+            headers: originalHeaders,
         });
-        // --- AKHIR MODIFIKASI ---
     }
 
   } catch (error) {
@@ -173,9 +169,3 @@ console.log(`Deno reverse proxy berjalan di http://localhost:${port}`);
 console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 
 Deno.serve({ port }, handler);
-
-// Cara menjalankan (tetap sama):
-// Simpan kode ini dalam file (misal: proxy_fix_mime.ts)
-// Jalankan dari terminal: deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_fix_mime.ts
-// Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda jika Anda menemui error terkait baca.
-// Atau (kurang aman): deno run -A proxy_fix_mime.ts
