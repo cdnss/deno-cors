@@ -21,6 +21,12 @@ async function handler(request: Request): Promise<Response> {
 
     const headers = new Headers(BROWSER_HEADERS);
 
+    const clientCookieHeader = request.headers.get('Cookie');
+    if (clientCookieHeader) {
+        headers.set('Cookie', clientCookieHeader);
+        console.log(`Meneruskan header cookie klien: ${clientCookieHeader.substring(0, 50)}${clientCookieHeader.length > 50 ? '...' : ''}`);
+    }
+
     const response = await fetch(targetUrl.toString(), {
       method: request.method,
       headers: headers,
@@ -90,13 +96,13 @@ async function handler(request: Request): Promise<Response> {
 
                             if (rewrittenSrcset !== originalUrl) {
                                 $element.attr(attribute, rewrittenSrcset);
-                                console.log(`Menulis ulang srcset untuk ${selector} index ${index}: ${originalUrl} -> ${rewrittenSrcset.substring(0, 50)}...`);
+                                console.log(`Menulis ulang srcset untuk ${selector} index ${index}: ${originalUrl} -> ${rewrittenSrcset.substring(0, 50)}${rewrittenSrcset.length > 50 ? '...' : ''}`);
                             }
                         } else {
                             const rewrittenUrl = rewriteUrl(originalUrl);
                             if (rewrittenUrl !== null && rewrittenUrl !== originalUrl) {
                                 $element.attr(attribute, rewrittenUrl);
-                                console.log(`Menulis ulang ${attribute} untuk ${selector} index ${index}: ${originalUrl} -> ${rewrittenUrl.substring(0, 50)}...`);
+                                console.log(`Menulis ulang ${attribute} untuk ${selector} index ${index}: ${originalUrl} -> ${rewrittenUrl.substring(0, 50)}${rewrittenUrl.length > 50 ? '...' : ''}`);
                             }
                         }
                     }
@@ -109,34 +115,26 @@ async function handler(request: Request): Promise<Response> {
                 const scriptContent = $(element).text();
 
                 if (scriptContent.includes('mydomain')) {
-                    console.log(`Menghapus script tag inline index ${index} karena mengandung "mydomain" (konten awal: ${scriptContent.substring(0, 50)}...)`);
+                    console.log(`Menghapus script tag inline index ${index} karena mengandung "mydomain" (konten awal: ${scriptContent.substring(0, 50)}${scriptContent.length > 50 ? '...' : ''})`);
                     $(element).remove();
                     removedCount++;
                 }
             });
             console.log(`Penghapusan script tag selesai. Dihapus ${removedCount}.`);
 
-            const modifiedHtml = $.html().replace('/themes/ajax/ch.php', `https://doujindesu.tv/themes/ajax/ch.php`);
-            
+
+            // Dapatkan kembali HTML yang sudah dimodifikasi dari Cheerio
+            // --- BARIS YANG DIMODIFIKASI ---
+            const modifiedHtml = $.html().replace('/themes/ajax/ch.php', `${targetBaseUrl}/themes/ajax/ch.php`);
+            // --- AKHIR BARIS YANG DIMODIFIKASI ---
+
             console.log("HTML diproses. Mengembalikan HTML yang dimodifikasi.");
+
 
             const modifiedHeaders = new Headers(response.headers);
             modifiedHeaders.delete('content-length');
             modifiedHeaders.delete('content-encoding');
             modifiedHeaders.set('content-type', 'text/html; charset=utf-8');
-            // --- TAMBAHAN: Tambahkan header CORS ke respons HTML ---
-            modifiedHeaders.set('Access-Control-Allow-Origin', '*'); // Izinkan permintaan dari origin manapun
-            // Atau, untuk lebih spesifik, Anda bisa menggunakan origin permintaan masuk:
-            // const origin = request.headers.get('Origin');
-            // if (origin) {
-            //     modifiedHeaders.set('Access-Control-Allow-Origin', origin);
-            //     // Anda mungkin juga perlu headers lain seperti Access-Control-Allow-Credentials,
-            //     // Access-Control-Allow-Headers, Access-Control-Allow-Methods
-            // } else {
-            //     modifiedHeaders.set('Access-Control-Allow-Origin', '*');
-            // }
-            // --- AKHIR TAMBAHAN ---
-
 
             return new Response(modifiedHtml, {
                 status: response.status,
@@ -146,7 +144,7 @@ async function handler(request: Request): Promise<Response> {
 
         } catch (htmlProcessError) {
             console.error("Error processing HTML with Cheerio:", htmlProcessError);
-            console.warn("Mengembalikan respons Internal Server Error karena kesalahan pemrosesan HTML.");
+            console.warn("Mengembalikan respons error karena kesalahan pemrosesan HTML.");
              return new Response("Internal Server Error: HTML processing failed.", { status: 500 });
         }
 
@@ -154,11 +152,6 @@ async function handler(request: Request): Promise<Response> {
         console.log(`Content-Type bukan HTML (${contentType}), mengembalikan respons asli dengan headers disalin.`);
 
         const originalHeaders = new Headers(response.headers);
-        // --- TAMBAHAN: Tambahkan header CORS ke respons resource non-HTML ---
-        originalHeaders.set('Access-Control-Allow-Origin', '*'); // Izinkan permintaan dari origin manapun
-        // Sama seperti di atas, Anda bisa lebih spesifik jika perlu.
-        // --- AKHIR TAMBAHAN ---
-
 
         return new Response(response.body, {
             status: response.status,
@@ -179,6 +172,6 @@ console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 Deno.serve({ port }, handler);
 
 // Cara menjalankan (tetap sama):
-// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_fix_cors.ts
-// Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda.
-// Atau (kurang aman): deno run -A proxy_fix_cors.ts
+// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_manual_replace.ts
+// Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda jika Anda menemui error terkait baca.
+// Atau (kurang aman): deno run -A proxy_manual_replace.ts
