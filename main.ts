@@ -127,7 +127,7 @@ async function handler(request: Request): Promise<Response> {
             console.log(`Penghapusan script tag selesai. Dihapus ${removedCount}.`);
 
 
-            const modifiedHtml = $.html().replace('url: "/themes/ajax/ch.php"', `url: "{targetBaseUrl}/themes/ajax/ch.php"`);
+            const modifiedHtml = $.html().replace('/themes/ajax/ch.php', `{targetBaseUrl}/themes/ajax/ch.php`);
             console.log("HTML diproses. Mengembalikan HTML yang dimodifikasi.");
 
             const modifiedHeaders = new Headers(response.headers);
