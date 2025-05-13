@@ -37,25 +37,105 @@ async function handler(request: Request): Promise<Response> {
             const html = await response.text();
             const $ = cheerio.load(html);
 
+            // Fungsi bantu untuk menulis ulang URL
+            const rewriteUrl = (url: string | null | undefined): string | null => {
+                if (!url) return null; // Tidak ada URL untuk diproses
+                try {
+                    // Buat objek URL absolut berdasarkan URL target base dan URL yang ditemukan
+                    const absoluteUrl = new URL(url, targetBaseUrl);
+
+                    // Periksa apakah hostname URL ini sama dengan hostname targetBaseUrl
+                    if (absoluteUrl.hostname === new URL(targetBaseUrl).hostname) {
+                        // Jika ya, kembalikan hanya path, query, dan hash. Ini akan menjadi URL relatif
+                        // terhadap root proxy, yang akan diminta oleh browser dari proxy itu sendiri.
+                        return absoluteUrl.pathname + absoluteUrl.search + absoluteUrl.hash;
+                    }
+                    // Jika hostname berbeda (URL eksternal), kembalikan URL aslinya tanpa diubah
+                    return url;
+                } catch (e) {
+                    // Jika parsing URL gagal, log peringatan dan kembalikan URL asli
+                    console.warn(`Gagal mengurai atau menulis ulang URL: ${url}`, e);
+                    return url;
+                }
+            };
+
+            // Daftar selector elemen dan atribut yang mungkin mengandung URL
+            const elementsAndAttributes = [
+                { selector: 'a[href]', attribute: 'href' }, // Link
+                { selector: 'link[href]', attribute: 'href' }, // CSS, ikon, prefetch, dll.
+                { selector: 'script[src]', attribute: 'src' }, // Skrip eksternal
+                { selector: 'img[src]', attribute: 'src' }, // Gambar
+                { selector: 'img[srcset]', attribute: 'srcset' }, // Gambar responsif (lebih kompleks)
+                { selector: 'source[src]', attribute: 'src' }, // Untuk gambar, audio, video
+                { selector: 'source[srcset]', attribute: 'srcset' }, // Gambar responsif source
+                { selector: 'form[action]', attribute: 'action' }, // Form submission URL
+                { selector: 'video[src]', attribute: 'src' }, // Video
+                { selector: 'video[poster]', attribute: 'poster' }, // Poster video
+                { selector: 'audio[src]', attribute: 'src' }, // Audio
+                { selector: 'use[href]', attribute: 'href' }, // SVG use
+                { selector: 'iframe[src]', attribute: 'src' }, // Iframe
+                // Pertimbangkan elemen lain jika perlu, misal: object[data], embed[src]
+            ];
+
+            // Iterasi melalui daftar dan terapkan rewriteUrl
+            elementsAndAttributes.forEach(({ selector, attribute }) => {
+                $(selector).each((index, element) => {
+                    const $element = $(element);
+                    const originalUrl = $element.attr(attribute);
+
+                    if (originalUrl) {
+                         // Penanganan khusus untuk srcset karena bisa berisi banyak URL
+                        if (attribute === 'srcset') {
+                            const rewrittenSrcset = originalUrl.split(',').map(srcsetItem => {
+                                const parts = srcsetItem.trim().split(/\s+/);
+                                if (parts.length > 0) {
+                                    const urlPart = parts[0]; // Bagian URL di srcset
+                                    const rewrittenUrlPart = rewriteUrl(urlPart);
+                                    if (rewrittenUrlPart !== null && rewrittenUrlPart !== urlPart) {
+                                         // Gabungkan kembali URL yang ditulis ulang dengan descriptor (misal: 1x, 400w)
+                                         return [rewrittenUrlPart, ...parts.slice(1)].join(' ');
+                                    }
+                                }
+                                return srcsetItem; // Kembalikan bagian asli jika tidak ada perubahan atau error
+                            }).join(', '); // Gabungkan kembali semua bagian srcset
+
+                            if (rewrittenSrcset !== originalUrl) {
+                                $element.attr(attribute, rewrittenSrcset);
+                                console.log(`Menulis ulang srcset untuk ${selector} index ${index}: ${originalUrl} -> ${rewrittenSrcset.substring(0, 50)}...`);
+                            }
+                        } else {
+                            // Penanganan untuk atribut URL tunggal
+                            const rewrittenUrl = rewriteUrl(originalUrl);
+                            if (rewrittenUrl !== null && rewrittenUrl !== originalUrl) {
+                                $element.attr(attribute, rewrittenUrl);
+                                console.log(`Menulis ulang ${attribute} untuk ${selector} index ${index}: ${originalUrl} -> ${rewrittenUrl.substring(0, 50)}...`);
+                            }
+                        }
+                    }
+                });
+            });
+            console.log("Penulisan ulang URL selesai.");
+
+
+            // --- Logika penghapusan script tag (sebelumnya) ---
             let removedCount = 0;
-            $('script').each((index, element) => {
+            // Kita hanya perlu memeriksa script tag inline (tanpa src)
+            // karena script tag dengan src sudah ditangani di rewriteUrl
+            $('script:not([src])').each((index, element) => {
                 const scriptContent = $(element).text();
 
                 if (scriptContent.includes('mydomain')) {
-                    console.log(`Menghapus script tag index ${index} karena mengandung "mydomain" (konten awal: ${scriptContent.substring(0, 50)}...)`);
+                    console.log(`Menghapus script tag inline index ${index} karena mengandung "mydomain" (konten awal: ${scriptContent.substring(0, 50)}...)`);
                     $(element).remove();
                     removedCount++;
                 }
             });
+            console.log(`Penghapusan script tag selesai. Dihapus ${removedCount}.`);
+            // --- Akhir logika penghapusan script tag ---
 
-            if (removedCount > 0) {
-                console.log(`Total ${removedCount} script tag dihapus.`);
-            } else {
-                console.log("Tidak ada script tag yang mengandung 'mydomain' ditemukan.");
-            }
 
             const modifiedHtml = $.html();
-            console.log("HTML processed. Returning modified HTML.");
+            console.log("HTML diproses. Mengembalikan HTML yang dimodifikasi.");
 
             const modifiedHeaders = new Headers(response.headers);
             modifiedHeaders.delete('content-length');
@@ -70,12 +150,12 @@ async function handler(request: Request): Promise<Response> {
 
         } catch (htmlProcessError) {
             console.error("Error processing HTML with Cheerio:", htmlProcessError);
-            console.warn("Returning original response due to HTML processing error.");
+            console.warn("Mengembalikan respons asli karena kesalahan pemrosesan HTML.");
             return response;
         }
 
     } else {
-        console.log(`Content-Type is not HTML (${contentType}), returning original response.`);
+        console.log(`Content-Type bukan HTML (${contentType}), mengembalikan respons asli.`);
         return response;
     }
 
@@ -85,13 +165,13 @@ async function handler(request: Request): Promise<Response> {
   }
 }
 
-console.log(`Deno reverse proxy running on http://localhost:${port}`);
-console.log(`Proxying requests to: ${targetBaseUrl}`);
+console.log(`Deno reverse proxy berjalan di http://localhost:${port}`);
+console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 
 Deno.serve({ port }, handler);
 
-// Cara menjalankan:
-// Simpan kode ini dalam file (misal: proxy_cheerio.ts)
-// Jalankan dari terminal: deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_cheerio.ts
-// Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda (biasanya di ~/.deno/deps)
-// Atau (kurang aman): deno run -A proxy_cheerio.ts
+// Cara menjalankan (tetap sama):
+// Simpan kode ini dalam file (misal: proxy_rewrite.ts)
+// Jalankan dari terminal: deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_rewrite.ts
+// Ganti <DENO_CACHE_DIR> dengan lokasi cache Deno Anda jika Anda menemui error terkait baca.
+// Atau (kurang aman): deno run -A proxy_rewrite.ts
