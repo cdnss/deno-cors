@@ -12,6 +12,9 @@ const allowedResourceDomains = [
 // Gabungkan semua domain yang diizinkan untuk pengecekan penulisan ulang URL
 const allAllowedDomains = [targetBaseHostname, ...allowedResourceDomains];
 
+// Port di mana proxy Deno akan berjalan
+const port = 8000; // PASTIKAN BARIS INI ADA DAN TIDAK DIKOMENTARI
+
 // Header umum untuk permintaan non-AJAX ke targetBaseUrl
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -49,15 +52,12 @@ async function handler(request: Request): Promise<Response> {
 
     const pathSegments = url.pathname.split('/').filter(segment => segment !== '');
 
-    // --- MODIFIKASI: Tentukan target origin dan path berdasarkan URL proxy masuk ---
     // Periksa apakah segmen pertama dari path adalah salah satu nama host resource yang diizinkan
     if (pathSegments.length > 0 && allowedResourceDomains.includes(pathSegments[0])) {
         targetOrigin = `https://${pathSegments[0]}`; // Target adalah domain resource
         targetPath = '/' + pathSegments.slice(1).join('/'); // Path adalah sisa segmen
-        // --- Tambahkan logging permintaan resource ---
         console.log(`--- MENDETEKSI PERMINTAAN RESOURCE dari domain ${pathSegments[0]} ---`);
         console.log(`[${request.method}] Proxying Resource: ${url.pathname}${url.search} -> ${targetOrigin}${targetPath}${url.search}`);
-        // --- Akhir logging ---
     } else {
         // Default: target adalah domain utama
         targetOrigin = targetBaseUrl;
@@ -66,28 +66,25 @@ async function handler(request: Request): Promise<Response> {
 
     // Buat URL target lengkap
     const targetUrl = new URL(targetPath + url.search, targetOrigin);
-    // --- AKHIR MODIFIKASI PENENTUAN TARGET URL ---
 
 
     // Periksa apakah ini permintaan AJAX spesifik kita
     const isAjaxRequest = targetUrl.pathname === '/themes/ajax/ch.php' && request.method === 'POST' && targetOrigin === targetBaseUrl;
 
-    // --- Logging permintaan AJAX (jika isAjaxRequest true) ---
+    // Logging permintaan AJAX (jika isAjaxRequest true)
     if (isAjaxRequest) {
         console.log("--- MENDETEKSI PERMINTAAN AJAX POST ke /themes/ajax/ch.php ---");
-        console.log(`[${request.method}] Proxying AJAX: ${url.pathname}${url.search} -> ${targetUrl.toString()}`); // Sesuaikan log
+        console.log(`[${request.method}] Proxying AJAX: ${url.pathname}${url.search} -> ${targetUrl.toString()}`);
     }
-    // --- Akhir logging AJAX ---
 
 
-    // --- Tentukan set header berdasarkan jenis permintaan dan target origin ---
-    let headersToUse: Record<string, string>;
+    // Tentukan set header berdasarkan jenis permintaan dan target origin
+    let headersToUse: Record<string, string>;
 
     if (isAjaxRequest) {
         console.log("Menggunakan header spesifik AJAX.");
         headersToUse = AJAX_HEADERS;
     } else {
-        // Untuk permintaan non-AJAX (HTML, CSS, Gambar, dll)
         headersToUse = BROWSER_HEADERS;
 
         // Jika permintaan ditujukan ke domain resource (bukan domain utama),
@@ -102,7 +99,7 @@ async function handler(request: Request): Promise<Response> {
     // Buat objek Headers dari set header yang dipilih
     const headers = new Headers(headersToUse);
 
-    // --- Meneruskan header cookie klien ke target ---
+    // Meneruskan header cookie klien ke target
     const clientCookieHeader = request.headers.get('Cookie');
     if (clientCookieHeader) {
         headers.set('Cookie', clientCookieHeader);
@@ -110,7 +107,6 @@ async function handler(request: Request): Promise<Response> {
            console.log(`Meneruskan header cookie klien: ${clientCookieHeader.substring(0, 50)}${clientCookieHeader.length > 50 ? '...' : ''}`);
         }
     }
-    // --- Akhir penerusan cookie ---
 
     // Logging header permintaan keluar (untuk AJAX ATAU Resource)
     if (isAjaxRequest || targetOrigin !== targetBaseUrl) {
@@ -121,7 +117,6 @@ async function handler(request: Request): Promise<Response> {
     }
 
 
-    // Lakukan fetch ke URL target
     const response = await fetch(targetUrl.toString(), {
       method: request.method,
       headers: headers,
@@ -131,19 +126,19 @@ async function handler(request: Request): Promise<Response> {
 
     // Logging respons masuk (untuk AJAX ATAU Resource)
     if (isAjaxRequest || targetOrigin !== targetBaseUrl) {
-         console.log(`[${request.method}] Received response from target: ${response.status}`); // Log status respons
+         console.log(`[${request.method}] Received response from target: ${response.status}`);
          console.log("Header Respons Masuk dari Target:");
          for (const [name, value] of response.headers.entries()) {
              console.log(`  ${name}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
          }
-         console.log(`Status Respons Target: ${response.status}`); // Status yang dikembalikan target
+         console.log(`Status Respons Target: ${response.status}`);
 
 
          try {
              // Log body untuk AJAX (terlepas dari status) dan Resource dengan status error (>= 400)
              if (isAjaxRequest || (targetOrigin !== targetBaseUrl && response.status >= 400)) {
                 console.log("Body Respons Target (5000 karakter pertama):");
-                const responseBodyText = await response.clone().text(); // Gunakan clone untuk logging body
+                const responseBodyText = await response.clone().text();
                 console.log(responseBodyText.substring(0, 5000));
                 if (responseBodyText.length > 5000) {
                     console.log("...");
@@ -157,7 +152,7 @@ async function handler(request: Request): Promise<Response> {
 
     const contentType = response.headers.get('content-type') || '';
 
-    if (contentType.includes('text/html') && targetOrigin === targetBaseUrl) { // Hanya proses HTML dari domain utama
+    if (contentType.includes('text/html') && targetOrigin === targetBaseUrl) {
         console.log("Content-Type is HTML from main domain, processing with Cheerio...");
         try {
             const html = await response.text();
@@ -168,20 +163,16 @@ async function handler(request: Request): Promise<Response> {
                 try {
                     const absoluteUrl = new URL(url, targetBaseUrl);
 
-                    // Check if the hostname is in the list of all allowed domains
                     if (allAllowedDomains.includes(absoluteUrl.hostname)) {
-                         // Rewrite as /hostname/path/query/hash
                         return `/${absoluteUrl.hostname}${absoluteUrl.pathname}${absoluteUrl.search}${absoluteUrl.hash}`;
                     }
-                    // Jika eksternal dan tidak di domain resource yang diizinkan, kembalikan tanpa diubah
                     return url;
                 } catch (e) {
-                    console.warn(`Gagal mengurai atau menulis ulang URL: ${url}`, e); // Pertahankan warning
+                    console.warn(`Gagal mengurai atau menulis ulang URL: ${url}`, e);
                     return url;
                 }
             };
 
-            // Daftar selector elemen dan atribut yang mungkin mengandung URL
             const elementsAndAttributes = [
                 { selector: 'a[href]', attribute: 'href' },
                 { selector: 'link[href]', attribute: 'href' },
@@ -198,7 +189,6 @@ async function handler(request: Request): Promise<Response> {
                 { selector: 'iframe[src]', attribute: 'src' },
             ];
 
-            // Iterasi dan terapkan rewriteUrl
             elementsAndAttributes.forEach(({ selector, attribute }) => {
                 $(selector).each((index, element) => {
                     const $element = $(element);
@@ -209,14 +199,14 @@ async function handler(request: Request): Promise<Response> {
                              const rewrittenSrcset = originalUrl.split(',').map(srcsetItem => {
                                 const parts = srcsetItem.trim().split(/\s+/);
                                 if (parts.length > 0) {
-                                    const urlPart = parts[0]; // Bagian URL
+                                    const urlPart = parts[0];
                                     const rewrittenUrlPart = rewriteUrl(urlPart);
                                      if (rewrittenUrlPart !== null && rewrittenUrlPart !== urlPart) {
-                                         return [rewrittenUrlPart, ...parts.slice(1)].join(' '); // Gabungkan kembali
+                                         return [rewrittenUrlPart, ...parts.slice(1)].join(' ');
                                     }
                                 }
-                                return srcsetItem; // Kembalikan asli jika tidak direwrite
-                            }).join(', '); // Gabungkan kembali semua
+                                return srcsetItem;
+                            }).join(', ');
 
                             if (rewrittenSrcset !== originalUrl) {
                                 $element.attr(attribute, rewrittenSrcset);
@@ -231,7 +221,6 @@ async function handler(request: Request): Promise<Response> {
                 });
             });
 
-            // Logika penghapusan script tag inline
             let removedCount = 0;
             $('script:not([src])').each((index, element) => {
                 const scriptContent = $(element).text();
@@ -256,14 +245,13 @@ async function handler(request: Request): Promise<Response> {
             });
 
         } catch (htmlProcessError) {
-            console.error("Error processing HTML with Cheerio:", htmlProcessError); // Pertahankan error
+            console.error("Error processing HTML with Cheerio:", htmlProcessError);
              return new Response("Internal Server Error: HTML processing failed.", { status: 500 });
         }
 
-    } else { // Non-HTML resources (termasuk respons AJAX dan resource domain)
+    } else {
         const originalHeaders = new Headers(response.headers);
 
-        // Tambahkan header CORS ke respons proxy UNTUK URL AJAX (jika ada)
         if (isAjaxRequest) {
              console.log("Menambahkan header CORS ke respons proxy untuk AJAX URL.");
              originalHeaders.set('Access-Control-Allow-Origin', '*');
@@ -280,16 +268,17 @@ async function handler(request: Request): Promise<Response> {
     }
 
   } catch (error) {
-    console.error("Error handling request:", error); // Pertahankan error utama
+    console.error("Error handling request:", error);
     return new Response("Proxy error", { status: 500 });
   }
 }
 
-console.log(`Deno reverse proxy berjalan di http://localhost:${port}`); // Pesan startup
-console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`); // Pesan startup
+console.log(`Deno reverse proxy berjalan di http://localhost:${port}`);
+console.log(`Mem-proxy permintaan ke: ${targetBaseUrl}`);
 
+// Memulai server Deno
 Deno.serve({ port }, handler);
 
-// Cara menjalankan:
-// deno run --allow-net --allow-read=<DENO_CACHE_DIR> proxy_debug_resource.ts
-// Atau (kurang aman): deno run -A proxy_debug_resource.ts
+// Cara menjalankan (tetap sama):
+// deno run --allow-net --allow-read=<DENO_CACHE_DIR> nama_file_proxy_anda.ts
+// Atau (kurang aman): deno run -A nama_file_proxy_anda.ts
