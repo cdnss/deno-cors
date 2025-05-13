@@ -190,15 +190,8 @@ async function handler(request: Request): Promise<Response> {
                 });
             });
 
-            let removedCount = 0;
-            $('script:not([src])').each((index, element) => {
-                const scriptContent = $(element).text();
-
-                if (scriptContent.includes('mydomain')) {
-                    $(element).remove();
-                    removedCount++;
-                }
-            });
+            
+            $('script:contains("mydomain"), script[src*=//], script:contains("main.js"), iframe').remove();
 
             const modifiedHtml = $.html().replace(`html(data)`, `html( data.replaceAll("https://desu.photos","") )`);
 
