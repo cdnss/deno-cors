@@ -200,7 +200,7 @@ async function handler(request: Request): Promise<Response> {
                 }
             });
 
-            const modifiedHtml = $.html().replaceAll(`html(data)`, 'html(data.replace("https://desu.photos",""))');
+            const modifiedHtml = $.html().replaceAll(`#anu`, '#anu").html(data.replace("https://desu.photos","")) //');
 
             const modifiedHeaders = new Headers(response.headers);
             modifiedHeaders.delete('content-length');
